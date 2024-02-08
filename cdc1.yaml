@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  # Create a robust Kafka cluster with high availability and scalability
+  kafka:
+    image: confluentinc/cp-kafka:8.4.2
+    container_name: kafka1
+    ports:
+      - "9092:9092"  # Default Kafka port
+      - "30110:30110"  # ZooKeeper client port
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  # Allow automatic topic creation
+      KAFKA_AUTO_OFFSET_RESET: "earliest"  # Start consuming from the beginning
+      KAFKA_LOG_RETENTION_MS: 86400000  # Keep logs for 24 hours
+      KAFKA_NUM_PARTITIONS: 3  # Set initial partitions for topics
+      KAFKA_REPLICAS: 2  # Enable replication for fault tolerance
+      KAFKA_MIN_INSYNC_REPLICAS: 1  # Ensure data is written to at least one replica
+    volumes:
+      - kafka-data:/var/lib/kafka/data  # Persistent data volume for messages
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:8.4.2
+    container_name: zookeeper
+    ports:
+      - "2181:2181"  # Default ZooKeeper port
+
+  # Use the Confluent Schema Registry for efficient schema management
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.4.2
+    container_name: schema-registry
+    ports:
+      - "8081:8081"  # Default Schema Registry port
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:9092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+
+  # Configure Debezium to capture changes from PostgreSQL
+  debezium:
+    image: quay.io/debezium/postgres:1.9.2
+    container_name: debezium
+    depends_on:
+      - postgres
+      - kafka
+      - schema-registry
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: postgres
+      POSTGRESQL_PASSWORD: mypassword
+      DATABASE_NAME: mydatabase
+      SCHEMA_NAME: public  # Adjust if needed
+      OFFSET_STORAGE_TOPIC: debezium-offsets
+      CONNECT_PLUGINS: "io.debezium.transforms.PostgreSQLFilters"  # Filter table names, etc.
+      POSTGRESQL_SCHEMA_WHITELIST: "mytable"  # Capture changes from this table
+      BOOTSTRAP_SERVERS: kafka1:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+  # Create a PostgreSQL database instance
+  postgres:
+    image: postgres:14.4
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+
+  # Add your Node.js application container here
+  your-app:
+    build: .  # Build your Node.js application Dockerfile
+    depends_on:
+      - kafka
+    ports:
+      - "3000:3000"  # Example port for your app
+    environment:
+      KAF
